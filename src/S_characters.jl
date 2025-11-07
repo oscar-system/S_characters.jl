@@ -5,6 +5,7 @@ using Oscar
 export s_character_simplex
 export s_characters
 export s_characters_via_factor_group
+export one_rational_s_character_via_milp
 
 # utility function:
 # For a vector `A` of vectors (class functions),
@@ -402,7 +403,7 @@ function s_characters_via_factor_group(tbl::Oscar.GAPGroupCharacterTable,
     n = length(galoissums)
     for w in ll
       is_zero(w) && continue
-      cand = factcand + sum(w[i] * galoissums[i] for i in 1:n)
+      cand = sum(w[i] * galoissums[i] for i in 1:n; init = factcand)
       if !ppow_nonzero || all(x -> !is_zero(cand[x]), ppow_pos)
         push!(res, cand)
       end
@@ -411,5 +412,48 @@ function s_characters_via_factor_group(tbl::Oscar.GAPGroupCharacterTable,
 
   return res
 end;
+
+@doc raw"""
+    one_rational_s_character_via_milp(tbl::Oscar.GAPGroupCharacterTable)
+
+Return `flag, psi` where `flag` is `true` if the program has found
+a nontrivial S-character of `tbl` that is nonzero on all elements of
+prime power order, and `false` otherwise.
+
+If `flag` is `true` then `psi` is the S-character that was found,
+otherwise `psi` is the trivial character of `tbl`.
+
+# Examples
+```jldoctest
+julia> flag, psi = one_rational_s_character_via_milp(character_table("A5"));
+
+julia> flag
+false
+
+julia> flag, psi = one_rational_s_character_via_milp(character_table("A8"));
+
+julia> flag
+true
+
+julia> println(coordinates(psi))
+QQFieldElem[1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3]
+```
+"""
+function one_rational_s_character_via_milp(tbl::Oscar.GAPGroupCharacterTable)
+  P, galoissums, ppow_pos = s_character_simplex(tbl,
+                              rational = true,
+                              ppow_nonzero = true,
+                              irrats = :nf);
+  d = length(galoissums)
+  milp = mixed_integer_linear_program(P, repeat([1], d))
+  _, sol = solve_milp(milp)
+  if is_zero(sol)
+    return false, trivial_character(tbl)
+  else
+    # By construction, we know that the S-character is positive on `ppow_pos`.
+    cand = sum(ZZ(sol[i]) * galoissums[i] for i in 1:d; init = trivial_character(tbl))
+    return true, cand
+  end
+end
 
 end # module S_characters
